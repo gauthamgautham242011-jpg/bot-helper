@@ -24,12 +24,13 @@ args = "SNF Bot"
 name = "SNF Bot"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd snf-bot && node index.js"
-
-[workflows.workflow.metadata]
-outputType = "console"
+waitForPort = 3000
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -38,6 +39,10 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
 
 [[ports]]
 localPort = 8080

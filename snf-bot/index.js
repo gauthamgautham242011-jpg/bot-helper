@@ -1,17 +1,30 @@
 require("dotenv").config();
 
 const fs = require("fs");
-const path = require("path");
+const http = require("http");
 
 const {
   Client,
   Collection,
   GatewayIntentBits,
-  ChannelType
+  ChannelType,
+  PermissionFlagsBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require("discord.js");
 
 const connectDB = require("./db/connect");
 
+// ── Keep-alive HTTP server (prevents Replit from sleeping) ──────────────────
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("SNF BOT is online ✅");
+}).listen(PORT, () => console.log(`🌐 Keep-alive server on port ${PORT}`));
+
+// ── Discord Client ──────────────────────────────────────────────────────────
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -34,12 +47,22 @@ for (const file of commandFiles) {
 
 require("./events/memberRoleWelcome")(client);
 
+// ── Ready ───────────────────────────────────────────────────────────────────
 client.once("ready", async () => {
   await connectDB();
   console.log(`✅ Logged in as ${client.user.tag}`);
+
+  // Set bot activity status
+  client.user.setPresence({
+    activities: [{ name: "SNF Server | /help", type: 3 }],
+    status: "online"
+  });
 });
 
+// ── Interaction Handler ─────────────────────────────────────────────────────
 client.on("interactionCreate", async (interaction) => {
+
+  // Slash Commands
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -48,19 +71,20 @@ client.on("interactionCreate", async (interaction) => {
       await command.execute(interaction);
     } catch (err) {
       console.error(err);
+      const msg = { content: "❌ An error occurred.", ephemeral: true };
       if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({ content: "❌ An error occurred." });
+        await interaction.editReply(msg);
       } else {
-        await interaction.reply({
-          content: "❌ An error occurred.",
-          ephemeral: true
-        });
+        await interaction.reply(msg);
       }
     }
     return;
   }
 
+  // Button Interactions
   if (interaction.isButton()) {
+
+    // ── Activity Check ──
     if (interaction.customId === "active") {
       await interaction.reply({
         content: "✅ You have been marked as active!",
@@ -69,10 +93,12 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
+    // ── Create Ticket ──
     if (interaction.customId === "create_ticket") {
       try {
+        const ticketName = `ticket-${interaction.user.username.toLowerCase().replace(/\s+/g, "-")}`;
         const existing = interaction.guild.channels.cache.find(
-          (ch) => ch.name === `ticket-${interaction.user.username.toLowerCase()}`
+          (ch) => ch.name === ticketName
         );
 
         if (existing) {
@@ -84,14 +110,41 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         const channel = await interaction.guild.channels.create({
-          name: `ticket-${interaction.user.username}`,
+          name: ticketName,
           type: ChannelType.GuildText,
-          topic: `Support ticket for ${interaction.user.tag}`
+          topic: `Support ticket for ${interaction.user.tag}`,
+          permissionOverwrites: [
+            {
+              id: interaction.guild.id,
+              deny: [PermissionFlagsBits.ViewChannel]
+            },
+            {
+              id: interaction.user.id,
+              allow: [
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.SendMessages,
+                PermissionFlagsBits.ReadMessageHistory
+              ]
+            }
+          ]
         });
 
-        await channel.send(
-          `🎫 Ticket opened by ${interaction.user}\n\nPlease describe your issue and a staff member will assist you shortly.`
+        const closeRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("close_ticket")
+            .setLabel("🔒 Close Ticket")
+            .setStyle(ButtonStyle.Danger)
         );
+
+        const embed = new EmbedBuilder()
+          .setTitle("🎫 Support Ticket")
+          .setDescription(
+            `Welcome ${interaction.user}!\n\nPlease describe your issue and a staff member will assist you shortly.`
+          )
+          .setColor(0x5865f2)
+          .setTimestamp();
+
+        await channel.send({ embeds: [embed], components: [closeRow] });
 
         await interaction.reply({
           content: `✅ Ticket created: ${channel}`,
@@ -100,21 +153,27 @@ client.on("interactionCreate", async (interaction) => {
       } catch (err) {
         console.error(err);
         await interaction.reply({
-          content: "❌ Failed to create ticket.",
+          content: "❌ Failed to create ticket. Make sure I have **Manage Channels** permission.",
           ephemeral: true
         });
       }
       return;
     }
 
+    // ── Close Ticket ──
     if (interaction.customId === "close_ticket") {
-      await interaction.reply({
-        content: "🔒 Closing ticket in 5 seconds..."
-      });
+      const embed = new EmbedBuilder()
+        .setDescription("🔒 This ticket will be deleted in **5 seconds**.")
+        .setColor(0xff0000);
+
+      await interaction.reply({ embeds: [embed] });
       setTimeout(() => interaction.channel.delete().catch(console.error), 5000);
       return;
     }
   }
 });
+
+// ── Auto-reconnect on disconnect ────────────────────────────────────────────
+client.on("error", (err) => console.error("❌ Discord error:", err.message));
 
 client.login(process.env.TOKEN);
