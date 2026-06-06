@@ -1,9 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
-const mongoose = require("mongoose");
-
-function getWarn() {
-  try { return require("../models/Warn"); } catch { return null; }
-}
+const warnings = require("../db/warnings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,39 +11,27 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const dbReady = mongoose.connection.readyState === 1;
-    if (!dbReady) {
-      return interaction.reply({
-        content: "❌ Database not connected. Add `MONGO_URI` to the `.env` file to enable warnings.",
-        ephemeral: true
-      });
-    }
-
-    const Warn = getWarn();
     const user = interaction.options.getUser("user");
-
-    const warns = await Warn.find({
-      guildId: interaction.guild.id,
-      userId: user.id
-    }).sort({ date: -1 });
+    const warns = warnings.getWarns(interaction.guild.id, user.id);
 
     if (warns.length === 0) {
       return interaction.reply({
-        content: `✅ ${user.tag} has no warnings.`,
+        content: `✅ **${user.tag}** ki koi warnings nahi hain.`,
         ephemeral: true
       });
     }
 
     const warnList = warns
-      .slice(0, 10)
+      .slice(-10)
+      .reverse()
       .map((w, i) => {
-        const date = new Date(w.date).toLocaleDateString();
+        const date = new Date(w.date).toLocaleDateString("en-IN");
         return `**#${i + 1}** — ${w.reason} *(${date})*`;
       })
       .join("\n");
 
     const embed = new EmbedBuilder()
-      .setTitle(`⚠️ Warnings for ${user.tag}`)
+      .setTitle(`⚠️ ${user.tag} ki Warnings`)
       .setColor(0xffa500)
       .setDescription(warnList)
       .setFooter({ text: `Total: ${warns.length} warning(s)` })

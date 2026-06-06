@@ -1,9 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
-const mongoose = require("mongoose");
-
-function getWarn() {
-  try { return require("../models/Warn"); } catch { return null; }
-}
+const warnings = require("../db/warnings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,33 +14,17 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const dbReady = mongoose.connection.readyState === 1;
-    if (!dbReady) {
-      return interaction.reply({
-        content: "❌ Database not connected. Add `MONGO_URI` to the `.env` file to enable warnings.",
-        ephemeral: true
-      });
-    }
-
-    const Warn = getWarn();
     const user = interaction.options.getUser("user");
     const reason = interaction.options.getString("reason");
 
     if (user.id === interaction.user.id) {
-      return interaction.reply({ content: "❌ You cannot warn yourself.", ephemeral: true });
+      return interaction.reply({ content: "❌ Aap khud ko warn nahi kar sakte.", ephemeral: true });
+    }
+    if (user.bot) {
+      return interaction.reply({ content: "❌ Bots ko warn nahi kar sakte.", ephemeral: true });
     }
 
-    await Warn.create({
-      guildId: interaction.guild.id,
-      userId: user.id,
-      moderatorId: interaction.user.id,
-      reason
-    });
-
-    const totalWarns = await Warn.countDocuments({
-      guildId: interaction.guild.id,
-      userId: user.id
-    });
+    const total = warnings.addWarn(interaction.guild.id, user.id, interaction.user.id, reason);
 
     const embed = new EmbedBuilder()
       .setTitle("⚠️ User Warned")
@@ -53,7 +33,7 @@ module.exports = {
         { name: "User", value: `${user.tag} (${user.id})`, inline: true },
         { name: "Moderator", value: `${interaction.user.tag}`, inline: true },
         { name: "Reason", value: reason, inline: false },
-        { name: "Total Warnings", value: `${totalWarns}`, inline: true }
+        { name: "Total Warnings", value: `**${total}**`, inline: true }
       )
       .setTimestamp();
 

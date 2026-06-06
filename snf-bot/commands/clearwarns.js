@@ -1,9 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
-const mongoose = require("mongoose");
-
-function getWarn() {
-  try { return require("../models/Warn"); } catch { return null; }
-}
+const warnings = require("../db/warnings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,33 +11,15 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    const dbReady = mongoose.connection.readyState === 1;
-    if (!dbReady) {
-      return interaction.reply({
-        content: "❌ Database not connected. Add `MONGO_URI` to `.env` to enable this command.",
-        ephemeral: true
-      });
-    }
-
-    const Warn = getWarn();
     const user = interaction.options.getUser("user");
-
-    const count = await Warn.countDocuments({
-      guildId: interaction.guild.id,
-      userId: user.id
-    });
+    const count = warnings.clearWarns(interaction.guild.id, user.id);
 
     if (count === 0) {
       return interaction.reply({
-        content: `✅ **${user.tag}** has no warnings to clear.`,
+        content: `✅ **${user.tag}** ki koi warnings nahi thi.`,
         ephemeral: true
       });
     }
-
-    await Warn.deleteMany({
-      guildId: interaction.guild.id,
-      userId: user.id
-    });
 
     const embed = new EmbedBuilder()
       .setTitle("🗑️ Warnings Cleared")
