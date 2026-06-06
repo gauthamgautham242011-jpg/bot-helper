@@ -1,9 +1,13 @@
 const { SlashCommandBuilder } = require("discord.js");
 const OpenAI = require("openai");
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+let openai = null;
+function getClient() {
+  if (!openai) {
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openai;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -22,7 +26,7 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const response = await openai.responses.create({
+      const response = await getClient().responses.create({
         model: "gpt-4o",
         input: question
       });
