@@ -1,5 +1,9 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
-const Warn = require("../models/Warn");
+const mongoose = require("mongoose");
+
+function getWarn() {
+  try { return require("../models/Warn"); } catch { return null; }
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,6 +15,15 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const dbReady = mongoose.connection.readyState === 1;
+    if (!dbReady) {
+      return interaction.reply({
+        content: "❌ Database not connected. Add `MONGO_URI` to the `.env` file to enable warnings.",
+        ephemeral: true
+      });
+    }
+
+    const Warn = getWarn();
     const user = interaction.options.getUser("user");
 
     const warns = await Warn.find({

@@ -1,13 +1,4 @@
 const { SlashCommandBuilder } = require("discord.js");
-const OpenAI = require("openai");
-
-let openai = null;
-function getClient() {
-  if (!openai) {
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return openai;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,23 +12,28 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key || key === "PASTE_YOUR_OPENAI_KEY_HERE") {
+      return interaction.reply({
+        content: "❌ OpenAI key not set. Add `OPENAI_API_KEY` to the `.env` file.",
+        ephemeral: true
+      });
+    }
+
+    const { default: OpenAI } = await import("openai");
+    const openai = new OpenAI({ apiKey: key });
     const question = interaction.options.getString("question");
 
     await interaction.deferReply();
 
     try {
-      const response = await getClient().responses.create({
+      const response = await openai.responses.create({
         model: "gpt-4o",
         input: question
       });
 
       const answer = response.output_text;
-
-      if (answer.length > 2000) {
-        await interaction.editReply(answer.substring(0, 1997) + "...");
-      } else {
-        await interaction.editReply(answer);
-      }
+      await interaction.editReply(answer.length > 2000 ? answer.substring(0, 1997) + "..." : answer);
     } catch (err) {
       console.error(err);
       await interaction.editReply("❌ Failed to get a response from ChatGPT.");
