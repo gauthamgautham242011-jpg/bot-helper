@@ -170,6 +170,19 @@ client.on("interactionCreate", async (interaction) => {
       setTimeout(() => interaction.channel.delete().catch(console.error), 5000);
       return;
     }
+
+    // ── Poll Vote ──
+    if (interaction.customId.startsWith("poll_")) {
+      const parts = interaction.customId.split("_");
+      const optionIndex = parseInt(parts[1]);
+      const emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"];
+
+      await interaction.reply({
+        content: `${emojis[optionIndex]} You voted for option **#${optionIndex + 1}**!`,
+        ephemeral: true
+      });
+      return;
+    }
   }
 });
 
