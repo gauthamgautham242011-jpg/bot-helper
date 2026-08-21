@@ -18,7 +18,7 @@ module.exports = {
         {
           name: "🛡️ Moderation",
           value:
-            "`/warn` — Warn a user\n`/warnings` — View a user's warnings\n`/ban` — Ban a user\n`/kick` — Kick a user\n`/timeout` — Timeout a user\n`/untimeout` — Remove timeout\n`/purge` — Delete messages",
+            "`/warn` — Warn a user\n`/warnings` — View a user's warnings\n`/ban` — Ban a user\n`/kick` — Kick a user\n`/timeout` — Timeout a user\n`/untimeout` — Remove timeout\n`/purge` — Delete messages\n`/deleteallchannels` — Delete every channel (Administrator only)",
           inline: false
         },
         {
