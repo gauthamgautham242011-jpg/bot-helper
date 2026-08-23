@@ -24,7 +24,7 @@ module.exports = {
         {
           name: "📋 Utility",
           value:
-            "`/activitycheck` — Start an activity check\n`/ticketpanel` — Create support ticket panel",
+            "`/activitycheck` — Start an activity check\n`/ticketpanel` — Create support ticket panel\n`/sendmessage` — Send a message to a channel (Manage Server)",
           inline: false
         }
       )
