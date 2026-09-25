@@ -58,19 +58,19 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setColor("#ff0000")
       .setDescription(
-        `You have been given the ${role} role.\n` +
-        `You are not able to join **${interaction.guild.name}** until you are unbanned from the application.`
+        `You have been given the <@&${role.id}> role. Now\n` +
+        `you are not able to join ${interaction.guild.name} until\n` +
+        `you get unbanned from the application`
       )
-      .setFooter({ text: "Void Seven System | Added by Fistygamerz" })
+      .setFooter({ text: "Void Seven System | Application Ban" })
       .setTimestamp();
 
     try {
       await member.roles.add(role, reason);
-      await member.send({ embeds: [embed] }).catch(() => {});
-
       await interaction.reply({
-        content: `✅ Application Ban role added to ${user.tag}. DM notification sent if their DMs were open.`,
-        ephemeral: true
+        content: `<@${member.id}>`,
+        embeds: [embed],
+        allowedMentions: { users: [member.id], parse: [] }
       });
     } catch (error) {
       console.error("Failed to add Application Ban role:", error.message);
