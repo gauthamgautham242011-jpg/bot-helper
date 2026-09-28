@@ -1,10 +1,17 @@
-const path = require("path");
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
-  AttachmentBuilder
+  AttachmentBuilder,
+  EmbedBuilder,
+  AuditLogEvent
 } = require("discord.js");
 const { createBackup, restoreBackup, botCanRestore } = require("../db/serverBackup");
+const { getGuildData } = require("../db/backupData");
+const {
+  archiveBackup,
+  listBackupArchives,
+  readBackupArchive
+} = require("../db/backupHistory");
 
 const MAX_BACKUP_BYTES = 7 * 1024 * 1024;
 const DISCORD_ATTACHMENT_HOSTS = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
@@ -31,6 +38,58 @@ function scheduleRestoredGiveaway(client, messageId, data, guildId) {
   setTimeout(checkEndTime, Math.min(Math.max(data.endTime - Date.now(), 0), 2_147_000_000));
 }
 
+function shorten(value, maxLength = 350) {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (!text) return "—";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function auditActionName(action) {
+  const knownNames = {
+    [AuditLogEvent.GuildUpdate]: "Server updated",
+    [AuditLogEvent.ChannelCreate]: "Channel created",
+    [AuditLogEvent.ChannelUpdate]: "Channel updated",
+    [AuditLogEvent.ChannelDelete]: "Channel deleted",
+    [AuditLogEvent.ChannelOverwriteCreate]: "Channel permission added",
+    [AuditLogEvent.ChannelOverwriteUpdate]: "Channel permission updated",
+    [AuditLogEvent.ChannelOverwriteDelete]: "Channel permission removed",
+    [AuditLogEvent.RoleCreate]: "Role created",
+    [AuditLogEvent.RoleUpdate]: "Role updated",
+    [AuditLogEvent.RoleDelete]: "Role deleted",
+    [AuditLogEvent.MemberKick]: "Member kicked",
+    [AuditLogEvent.MemberBanAdd]: "Member banned",
+    [AuditLogEvent.MemberBanRemove]: "Member unbanned",
+    [AuditLogEvent.MemberUpdate]: "Member updated",
+    [AuditLogEvent.MemberRoleUpdate]: "Member roles changed",
+    [AuditLogEvent.MessageDelete]: "Message deleted",
+    [AuditLogEvent.MessageBulkDelete]: "Messages deleted",
+    [AuditLogEvent.InviteCreate]: "Invite created",
+    [AuditLogEvent.InviteDelete]: "Invite deleted",
+    [AuditLogEvent.WebhookCreate]: "Webhook created",
+    [AuditLogEvent.WebhookUpdate]: "Webhook updated",
+    [AuditLogEvent.WebhookDelete]: "Webhook deleted",
+    [AuditLogEvent.BotAdd]: "Bot added"
+  };
+  return knownNames[action] || `Discord action ${action}`;
+}
+
+function formatAuditEntry(entry) {
+  const target = entry.target?.name || entry.target?.tag || entry.target?.id || "Unknown target";
+  const executor = entry.executor?.tag || entry.executor?.username || entry.executor?.id || "Unknown user";
+  const changes = (entry.changes || [])
+    .slice(0, 3)
+    .map(change => `${change.key}: ${shorten(change.old)} → ${shorten(change.new)}`)
+    .join("\n");
+
+  return [
+    `**${auditActionName(entry.action)}**`,
+    `Target: ${shorten(target, 180)}`,
+    `By: ${shorten(executor, 180)}`,
+    changes ? shorten(changes, 650) : null,
+    `<t:${Math.floor(entry.createdTimestamp / 1000)}:R>`
+  ].filter(Boolean).join("\n");
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("backup")
@@ -40,6 +99,35 @@ module.exports = {
       subcommand
         .setName("create")
         .setDescription("Download a JSON backup of bot data, roles, and channels")
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("info")
+        .setDescription("Show the current server backup summary and saved backup history")
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("download")
+        .setDescription("Download one of this server's saved backups")
+        .addStringOption(option =>
+          option
+            .setName("id")
+            .setDescription("Backup ID shown by /backup info")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("changes")
+        .setDescription("Show recent server changes from Discord's audit log")
+        .addIntegerOption(option =>
+          option
+            .setName("limit")
+            .setDescription("Number of recent changes to show")
+            .setMinValue(1)
+            .setMaxValue(15)
+            .setRequired(false)
+        )
     )
     .addSubcommand(subcommand =>
       subcommand
@@ -84,16 +172,128 @@ module.exports = {
         const file = new AttachmentBuilder(contents, {
           name: `snf-backup-${safeFilename(interaction.guild.name)}-${date}.json`
         });
+        let archiveNotice = "";
+        try {
+          const saved = archiveBackup(interaction.guild.id, backup);
+          archiveNotice = `\nSaved backup ID: \`${saved.id}\` (use \`/backup info\` to see it).`;
+        } catch (archiveError) {
+          console.error("Could not archive server backup:", archiveError.message);
+          archiveNotice = "\n⚠️ The download is ready, but the bot could not save a local history copy.";
+        }
+
         await interaction.editReply({
           content:
             `✅ Backup for **${interaction.guild.name}** is ready.\n` +
             `Includes roles, supported channel setup, warnings, server settings, and giveaway records. ` +
-            `Message history and channel contents are not included. Keep the downloaded file somewhere safe.`,
+            `Message history and channel contents are not included. Keep the downloaded file somewhere safe.` +
+            archiveNotice,
           files: [file]
         });
       } catch (error) {
         console.error("Failed to create server backup:", error.message);
         await interaction.editReply("❌ Could not create the backup. Check the bot logs and try again.");
+      }
+      return;
+    }
+
+    if (subcommand === "info") {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        await interaction.guild.roles.fetch();
+        await interaction.guild.channels.fetch();
+        const data = getGuildData(interaction.guild.id);
+        const warningCount = Object.values(data.warnings).reduce(
+          (total, items) => total + (Array.isArray(items) ? items.length : 0),
+          0
+        );
+        const history = listBackupArchives(interaction.guild.id);
+        const historyText = history.length
+          ? history.slice(0, 10).map(entry =>
+            `\`${entry.id}\` • <t:${Math.floor(Date.parse(entry.createdAt) / 1000)}:F> • ` +
+            `${entry.roles} roles, ${entry.channels} channels, ${entry.warnings} warnings`
+          ).join("\n")
+          : "No saved backup history yet. Create a new backup to start the archive.";
+
+        const embed = new EmbedBuilder()
+          .setTitle(`📦 Backup info — ${interaction.guild.name}`)
+          .setColor(0x5865f2)
+          .addFields(
+            {
+              name: "Current server",
+              value:
+                `Roles: **${interaction.guild.roles.cache.filter(role => !role.managed && role.id !== interaction.guild.id).size}**\n` +
+                `Channels: **${interaction.guild.channels.cache.size}**\n` +
+                `Warnings: **${warningCount}**\n` +
+                `Giveaway records: **${Object.keys(data.giveaways).length}**`,
+              inline: true
+            },
+            {
+              name: "Saved backups",
+              value: `${historyText}\n\nUse \`/backup download id:<ID>\` to download an older saved copy.`,
+              inline: false
+            }
+          )
+          .setFooter({ text: "Only the latest 10 backups are kept. Old Discord audit logs expire after about 45 days." })
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+      } catch (error) {
+        console.error("Failed to show backup info:", error.message);
+        await interaction.editReply("❌ Could not read backup information. Check the bot logs and try again.");
+      }
+      return;
+    }
+
+    if (subcommand === "download") {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const id = interaction.options.getString("id", true).trim();
+        const archive = readBackupArchive(interaction.guild.id, id);
+        await interaction.editReply({
+          content: `✅ Saved backup \`${id}\` for **${interaction.guild.name}**.`,
+          files: [new AttachmentBuilder(archive.contents, { name: archive.filename })]
+        });
+      } catch (error) {
+        await interaction.editReply(`❌ Could not download that backup: ${error.message}`);
+      }
+      return;
+    }
+
+    if (subcommand === "changes") {
+      const botMember = interaction.guild.members.me;
+      if (!botMember?.permissions.has(PermissionFlagsBits.ViewAuditLog)) {
+        await interaction.reply({
+          content: "❌ I need the **View Audit Log** permission to read server changes.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const limit = interaction.options.getInteger("limit") || 10;
+        const auditLogs = await interaction.guild.fetchAuditLogs({ limit });
+        const entries = [...auditLogs.entries.values()];
+        if (!entries.length) {
+          await interaction.editReply("ℹ️ Discord returned no recent audit-log changes for this server.");
+          return;
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🧾 Recent server changes — ${interaction.guild.name}`)
+          .setDescription("These are Discord audit-log entries, not message history. Discord normally keeps audit logs for about 45 days.")
+          .setColor(0xffa500)
+          .addFields(entries.slice(0, 25).map((entry, index) => ({
+            name: `#${index + 1} • ${auditActionName(entry.action)}`,
+            value: shorten(formatAuditEntry(entry), 1024),
+            inline: false
+          })))
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+      } catch (error) {
+        console.error("Failed to read server audit log:", error.message);
+        await interaction.editReply("❌ I could not read the server audit log. Check my **View Audit Log** permission.");
       }
       return;
     }
