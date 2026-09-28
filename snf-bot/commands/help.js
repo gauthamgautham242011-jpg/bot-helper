@@ -24,7 +24,7 @@ module.exports = {
         {
           name: "📋 Utility",
           value:
-            "`/activitycheck` — Start an activity check\n`/ticketpanel` — Create support ticket panel\n`/v7applications` — Post Tagalog + English application status\n`/backup create` — Download and save a new backup\n`/backup info` — View current backup info and older saved backups\n`/backup download` — Download an older saved backup\n`/backup changes` — View recent server changes\n`/backup restore` — Add missing data and setup from a backup\n`/sendmessage` — Send a message to a channel (Manage Server)\n`/senddm` — Send a private DM to a user (Manage Server)\n`/spam` — Send one controlled role notification (Manage Server)",
+            "`/activitycheck` — Start an activity check\n`/ticketpanel` — Create support ticket panel\n`/v7applications` — Post Tagalog + English application status\n`/gangsetup` — Load the Gang server category and channel layout\n`/backup create` — Download and save a new backup\n`/backup info` — View current backup info and older saved backups\n`/backup download` — Download an older saved backup\n`/backup changes` — View recent server changes\n`/backup restore` — Add missing data and setup from a backup\n`/sendmessage` — Send a message to a channel (Manage Server)\n`/senddm` — Send a private DM to a user (Manage Server)\n`/spam` — Send one controlled role notification (Manage Server)",
           inline: false
         }
       )
