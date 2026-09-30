@@ -1,7 +1,15 @@
-"scripts": {
-  "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-  "typecheck:libs": "tsc --build",
-  "typecheck": "pnpm run typecheck:libs",
-  "build": "pnpm run typecheck",
-  "start": "node snf-bot/index.js"
+{
+  "name": "bot-helper",
+  "version": "1.0.0",
+  "description": "Discord Bot Helper",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.22.1"
+  }
 }
